@@ -42,7 +42,17 @@ def to_pickle(obj, path, compression='infer', protocol=pkl.HIGHEST_PROTOCOL):
     if protocol < 0:
         protocol = pkl.HIGHEST_PROTOCOL
     try:
-        pkl.dump(obj, f, protocol=protocol)
+        import zipfile
+        if isinstance(f, zipfile.ZipFile):
+            import os
+            import tempfile
+            tmp_file = tempfile.NamedTemporaryFile(delete=False)
+            pkl.dump(obj, tmp_file, protocol=protocol)
+            tmp_file.close()
+            f.write(tmp_file.name)
+            os.remove(tmp_file.name)
+        else:
+            pkl.dump(obj, f, protocol=protocol)
     finally:
         for _f in fh:
             _f.close()
