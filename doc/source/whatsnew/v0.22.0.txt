@@ -87,6 +87,7 @@ Documentation Changes
 Bug Fixes
 ~~~~~~~~~
 
+- Bug in unittests fail on python3 due to .timestamp() using local time (:issue:`18037`)
 
 Conversion
 ^^^^^^^^^^
