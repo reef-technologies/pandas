@@ -1,5 +1,9 @@
 """ pickle compat """
 
+import os
+import tempfile
+import zipfile
+
 import numpy as np
 from numpy.lib.format import read_array, write_array
 from pandas.compat import BytesIO, cPickle as pkl, pickle_compat as pc, PY3
@@ -16,7 +20,7 @@ def to_pickle(obj, path, compression='infer', protocol=pkl.HIGHEST_PROTOCOL):
     obj : any object
     path : string
         File path
-    compression : {'infer', 'gzip', 'bz2', 'xz', None}, default 'infer'
+    compression : {'infer', 'gzip', 'bz2', 'xz', 'zip', None}, default 'infer'
         a string representing the compression to use in the output file
 
         .. versionadded:: 0.20.0
@@ -42,10 +46,7 @@ def to_pickle(obj, path, compression='infer', protocol=pkl.HIGHEST_PROTOCOL):
     if protocol < 0:
         protocol = pkl.HIGHEST_PROTOCOL
     try:
-        import zipfile
         if isinstance(f, zipfile.ZipFile):
-            import os
-            import tempfile
             tmp_file = tempfile.NamedTemporaryFile(delete=False)
             pkl.dump(obj, tmp_file, protocol=protocol)
             tmp_file.close()
