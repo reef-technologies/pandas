@@ -10,21 +10,16 @@ import timeit
 
 class frame_to_csv(object):
     goal_time = 0.2
-    fname = '__test__.csv'
 
     def setup(self):
         self.df = DataFrame(np.random.randn(3000, 30))
 
     def time_frame_to_csv(self):
-        self.df.to_csv(self.fname)
-
-    def teardown(self):
-        os.remove(self.fname)
+        self.df.to_csv('__test__.csv')
 
 
 class frame_to_csv2(object):
     goal_time = 0.2
-    fname = '__test__.csv'
 
     def setup(self):
         self.df = DataFrame({'A': range(50000), })
@@ -33,30 +28,22 @@ class frame_to_csv2(object):
         self.df['D'] = (self.df.A + 3.0)
 
     def time_frame_to_csv2(self):
-        self.df.to_csv(self.fname)
-
-    def teardown(self):
-        os.remove(self.fname)
+        self.df.to_csv('__test__.csv')
 
 
 class frame_to_csv_date_formatting(object):
     goal_time = 0.2
-    fname = '__test__.csv'
 
     def setup(self):
         self.rng = date_range('1/1/2000', periods=1000)
         self.data = DataFrame(self.rng, index=self.rng)
 
     def time_frame_to_csv_date_formatting(self):
-        self.data.to_csv(self.fname, date_format='%Y%m%d')
-
-    def teardown(self):
-        os.remove(self.fname)
+        self.data.to_csv('__test__.csv', date_format='%Y%m%d')
 
 
 class frame_to_csv_mixed(object):
     goal_time = 0.2
-    fname = '__test__.csv'
 
     def setup(self):
         self.df_float = DataFrame(np.random.randn(5000, 5), dtype='float64', columns=self.create_cols('float'))
@@ -68,13 +55,10 @@ class frame_to_csv_mixed(object):
         self.df = concat([self.df_float, self.df_int, self.df_bool, self.df_object, self.df_dt], axis=1)
 
     def time_frame_to_csv_mixed(self):
-        self.df.to_csv(self.fname)
+        self.df.to_csv('__test__.csv')
 
     def create_cols(self, name):
         return [('%s%03d' % (name, i)) for i in range(5)]
-
-    def teardown(self):
-        os.remove(self.fname)
 
 
 class read_csv_infer_datetime_format_custom(object):
@@ -112,34 +96,26 @@ class read_csv_infer_datetime_format_ymd(object):
 
 class read_csv_skiprows(object):
     goal_time = 0.2
-    fname = '__test__.csv'
 
     def setup(self):
         self.index = tm.makeStringIndex(20000)
         self.df = DataFrame({'float1': randn(20000), 'float2': randn(20000), 'string1': (['foo'] * 20000), 'bool1': ([True] * 20000), 'int1': np.random.randint(0, 200000, size=20000), }, index=self.index)
-        self.df.to_csv(self.fname)
+        self.df.to_csv('__test__.csv')
 
     def time_read_csv_skiprows(self):
-        read_csv(self.fname, skiprows=10000)
-
-    def teardown(self):
-        os.remove(self.fname)
+        read_csv('__test__.csv', skiprows=10000)
 
 
 class read_csv_standard(object):
     goal_time = 0.2
-    fname = '__test__.csv'
 
     def setup(self):
         self.index = tm.makeStringIndex(10000)
         self.df = DataFrame({'float1': randn(10000), 'float2': randn(10000), 'string1': (['foo'] * 10000), 'bool1': ([True] * 10000), 'int1': np.random.randint(0, 100000, size=10000), }, index=self.index)
-        self.df.to_csv(self.fname)
+        self.df.to_csv('__test__.csv')
 
     def time_read_csv_standard(self):
-        read_csv(self.fname)
-
-    def teardown(self):
-        os.remove(self.fname)
+        read_csv('__test__.csv')
 
 
 class read_parse_dates_iso8601(object):
@@ -178,17 +154,13 @@ class read_uint64_integers(object):
 
 class write_csv_standard(object):
     goal_time = 0.2
-    fname = '__test__.csv'
 
     def setup(self):
         self.index = tm.makeStringIndex(10000)
         self.df = DataFrame({'float1': randn(10000), 'float2': randn(10000), 'string1': (['foo'] * 10000), 'bool1': ([True] * 10000), 'int1': np.random.randint(0, 100000, size=10000), }, index=self.index)
 
     def time_write_csv_standard(self):
-        self.df.to_csv(self.fname)
-
-    def teardown(self):
-        os.remove(self.fname)
+        self.df.to_csv('__test__.csv')
 
 
 class read_csv_from_s3(object):

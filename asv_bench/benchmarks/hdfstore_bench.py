@@ -40,7 +40,6 @@ class HDF5(object):
 
     def teardown(self):
         self.store.close()
-        self.remove(self.f)
 
     def remove(self, f):
         try:
@@ -116,7 +115,6 @@ class HDF5Panel(object):
 
     def teardown(self):
         self.store.close()
-        self.remove(self.f)
 
     def remove(self, f):
         try:
