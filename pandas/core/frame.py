@@ -54,6 +54,7 @@ from pandas.core.dtypes.common import (
     _ensure_int64,
     _ensure_platform_int,
     is_list_like,
+    is_nested_list_like,
     is_iterator,
     is_sequence,
     is_named_tuple)
@@ -147,16 +148,17 @@ how : {'left', 'right', 'outer', 'inner'}, default 'inner'
     * inner: use intersection of keys from both frames, similar to a SQL inner
       join; preserve the order of the left keys
 on : label or list
-    Field names to join on. Must be found in both DataFrames. If on is
-    None and not merging on indexes, then it merges on the intersection of
-    the columns by default.
+    Column or index level names to join on. These must be found in both
+    DataFrames. If `on` is None and not merging on indexes then this defaults
+    to the intersection of the columns in both DataFrames.
 left_on : label or list, or array-like
-    Field names to join on in left DataFrame. Can be a vector or list of
-    vectors of the length of the DataFrame to use a particular vector as
-    the join key instead of columns
+    Column or index level names to join on in the left DataFrame. Can also
+    be an array or list of arrays of the length of the left DataFrame.
+    These arrays are treated as if they are columns.
 right_on : label or list, or array-like
-    Field names to join on in right DataFrame or vector/list of vectors per
-    left_on docs
+    Column or index level names to join on in the right DataFrame. Can also
+    be an array or list of arrays of the length of the right DataFrame.
+    These arrays are treated as if they are columns.
 left_index : boolean, default False
     Use the index from the left DataFrame as the join key(s). If it is a
     MultiIndex, the number of keys in the other DataFrame (either the index
@@ -194,6 +196,11 @@ validate : string, default None
     * "many_to_many" or "m:m": allowed, but does not result in checks.
 
     .. versionadded:: 0.21.0
+
+Notes
+-----
+Support for specifying index levels as the `on`, `left_on`, and
+`right_on` parameters was added in version 0.22.0
 
 Examples
 --------
@@ -347,7 +354,7 @@ class DataFrame(NDFrame):
         elif isinstance(data, (np.ndarray, Series, Index)):
             if data.dtype.names:
                 data_columns = list(data.dtype.names)
-                data = dict((k, data[k]) for k in data_columns)
+                data = {k: data[k] for k in data_columns}
                 if columns is None:
                     columns = data_columns
                 mgr = self._init_dict(data, index, columns, dtype=dtype)
@@ -417,8 +424,7 @@ class DataFrame(NDFrame):
                 extract_index(list(data.values()))
 
             # prefilter if columns passed
-            data = dict((k, v) for k, v in compat.iteritems(data)
-                        if k in columns)
+            data = {k: v for k, v in compat.iteritems(data) if k in columns}
 
             if index is None:
                 index = extract_index(list(data.values()))
@@ -993,7 +999,7 @@ class DataFrame(NDFrame):
                           for k, v in compat.iteritems(self))
         elif orient.lower().startswith('r'):
             return [into_c((k, _maybe_box_datetimelike(v))
-                           for k, v in zip(self.columns, row))
+                           for k, v in zip(self.columns, np.atleast_1d(row)))
                     for row in self.values]
         elif orient.lower().startswith('i'):
             return into_c((k, v.to_dict(into)) for k, v in self.iterrows())
@@ -1272,16 +1278,34 @@ class DataFrame(NDFrame):
                 columns = _ensure_index(keys)
                 arrays = values
 
-            return cls._from_arrays(arrays, columns, None)
+            # GH 17312
+            # Provide more informative error msg when scalar values passed
+            try:
+                return cls._from_arrays(arrays, columns, None)
+
+            except ValueError:
+                if not is_nested_list_like(values):
+                    raise ValueError('The value in each (key, value) pair '
+                                     'must be an array, Series, or dict')
+
         elif orient == 'index':
             if columns is None:
                 raise TypeError("Must pass columns with orient='index'")
 
             keys = _ensure_index(keys)
 
-            arr = np.array(values, dtype=object).T
-            data = [lib.maybe_convert_objects(v) for v in arr]
-            return cls._from_arrays(data, columns, keys)
+            # GH 17312
+            # Provide more informative error msg when scalar values passed
+            try:
+                arr = np.array(values, dtype=object).T
+                data = [lib.maybe_convert_objects(v) for v in arr]
+                return cls._from_arrays(data, columns, keys)
+
+            except TypeError:
+                if not is_nested_list_like(values):
+                    raise ValueError('The value in each (key, value) pair '
+                                     'must be an array, Series, or dict')
+
         else:  # pragma: no cover
             raise ValueError("'orient' must be either 'columns' or 'index'")
 
@@ -3895,7 +3919,7 @@ class DataFrame(NDFrame):
                     return self._constructor_sliced(r, index=new_index,
                                                     dtype=r.dtype)
 
-                result = dict((col, f(col)) for col in this)
+                result = {col: f(col) for col in this}
 
             # non-unique
             else:
@@ -3906,7 +3930,7 @@ class DataFrame(NDFrame):
                     return self._constructor_sliced(r, index=new_index,
                                                     dtype=r.dtype)
 
-                result = dict((i, f(i)) for i, col in enumerate(this.columns))
+                result = {i: f(i) for i, col in enumerate(this.columns)}
                 result = self._constructor(result, index=new_index, copy=False)
                 result.columns = new_columns
                 return result
@@ -3984,7 +4008,7 @@ class DataFrame(NDFrame):
         if self.columns.is_unique:
 
             def _compare(a, b):
-                return dict((col, func(a[col], b[col])) for col in a.columns)
+                return {col: func(a[col], b[col]) for col in a.columns}
 
             new_data = expressions.evaluate(_compare, str_rep, self, other)
             return self._constructor(data=new_data, index=self.index,
@@ -3993,8 +4017,8 @@ class DataFrame(NDFrame):
         else:
 
             def _compare(a, b):
-                return dict((i, func(a.iloc[:, i], b.iloc[:, i]))
-                            for i, col in enumerate(a.columns))
+                return {i: func(a.iloc[:, i], b.iloc[:, i])
+                        for i, col in enumerate(a.columns)}
 
             new_data = expressions.evaluate(_compare, str_rep, self, other)
             result = self._constructor(data=new_data, index=self.index,
@@ -4513,7 +4537,7 @@ class DataFrame(NDFrame):
         fill_value : replace NaN with this value if the unstack produces
             missing values
 
-            .. versionadded: 0.18.0
+            .. versionadded:: 0.18.0
 
         See also
         --------
@@ -4676,7 +4700,7 @@ class DataFrame(NDFrame):
         axis : {0 or 'index', 1 or 'columns'}, default 0
             Take difference over rows (0) or columns (1).
 
-            .. versionadded: 0.16.1
+            .. versionadded:: 0.16.1
 
         Returns
         -------
@@ -5196,12 +5220,12 @@ class DataFrame(NDFrame):
             Index should be similar to one of the columns in this one. If a
             Series is passed, its name attribute must be set, and that will be
             used as the column name in the resulting joined DataFrame
-        on : column name, tuple/list of column names, or array-like
-            Column(s) in the caller to join on the index in other,
-            otherwise joins index-on-index. If multiples
-            columns given, the passed DataFrame must have a MultiIndex. Can
-            pass an array as the join key if not already contained in the
-            calling DataFrame. Like an Excel VLOOKUP operation
+        on : name, tuple/list of names, or array-like
+            Column or index level name(s) in the caller to join on the index
+            in `other`, otherwise joins index-on-index. If multiple
+            values given, the `other` DataFrame must have a MultiIndex. Can
+            pass an array as the join key if it is not already contained in
+            the calling DataFrame. Like an Excel VLOOKUP operation
         how : {'left', 'right', 'outer', 'inner'}, default: 'left'
             How to handle the operation of the two objects.
 
@@ -5225,6 +5249,9 @@ class DataFrame(NDFrame):
         -----
         on, lsuffix, and rsuffix options are not supported when passing a list
         of DataFrame objects
+
+        Support for specifying index levels as the `on` parameter was added
+        in version 0.22.0
 
         Examples
         --------

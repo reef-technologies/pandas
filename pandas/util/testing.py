@@ -325,13 +325,6 @@ def _skip_if_32bit():
         pytest.skip("skipping for 32 bit")
 
 
-def _skip_if_no_mpl():
-    import pytest
-
-    mpl = pytest.importorskip("matplotlib")
-    mpl.use("Agg", warn=False)
-
-
 def _skip_if_mpl_1_5():
     import matplotlib as mpl
 
@@ -1702,7 +1695,8 @@ def all_index_generator(k=10):
     """
     all_make_index_funcs = [makeIntIndex, makeFloatIndex, makeStringIndex,
                             makeUnicodeIndex, makeDateIndex, makePeriodIndex,
-                            makeTimedeltaIndex, makeBoolIndex,
+                            makeTimedeltaIndex, makeBoolIndex, makeRangeIndex,
+                            makeIntervalIndex,
                             makeCategoricalIndex]
     for make_index_func in all_make_index_funcs:
         yield make_index_func(k=k)
@@ -1741,7 +1735,7 @@ def makeObjectSeries(name=None):
 
 def getSeriesData():
     index = makeStringIndex(N)
-    return dict((c, Series(randn(N), index=index)) for c in getCols(K))
+    return {c: Series(randn(N), index=index) for c in getCols(K)}
 
 
 def makeTimeSeries(nper=None, freq='B', name=None):
@@ -1757,11 +1751,11 @@ def makePeriodSeries(nper=None, name=None):
 
 
 def getTimeSeriesData(nper=None, freq='B'):
-    return dict((c, makeTimeSeries(nper, freq)) for c in getCols(K))
+    return {c: makeTimeSeries(nper, freq) for c in getCols(K)}
 
 
 def getPeriodData(nper=None):
-    return dict((c, makePeriodSeries(nper)) for c in getCols(K))
+    return {c: makePeriodSeries(nper) for c in getCols(K)}
 
 
 # make frame
@@ -1800,14 +1794,14 @@ def makePeriodFrame(nper=None):
 def makePanel(nper=None):
     with warnings.catch_warnings(record=True):
         cols = ['Item' + c for c in string.ascii_uppercase[:K - 1]]
-        data = dict((c, makeTimeDataFrame(nper)) for c in cols)
+        data = {c: makeTimeDataFrame(nper) for c in cols}
         return Panel.fromDict(data)
 
 
 def makePeriodPanel(nper=None):
     with warnings.catch_warnings(record=True):
         cols = ['Item' + c for c in string.ascii_uppercase[:K - 1]]
-        data = dict((c, makePeriodFrame(nper)) for c in cols)
+        data = {c: makePeriodFrame(nper) for c in cols}
         return Panel.fromDict(data)
 
 

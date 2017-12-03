@@ -18,7 +18,7 @@ from pandas.core.dtypes.common import (
     is_bool,
     is_integer, is_integer_dtype,
     is_float_dtype,
-    is_extension_type, is_datetimetz,
+    is_extension_type,
     is_datetime64tz_dtype,
     is_timedelta64_dtype,
     is_list_like,
@@ -34,18 +34,17 @@ from pandas.core.dtypes.generic import (
 from pandas.core.dtypes.cast import (
     maybe_upcast, infer_dtype_from_scalar,
     maybe_convert_platform,
-    maybe_cast_to_datetime, maybe_castable)
+    maybe_cast_to_datetime, maybe_castable,
+    construct_1d_arraylike_from_scalar)
 from pandas.core.dtypes.missing import isna, notna, remove_na_arraylike
 
 from pandas.core.common import (is_bool_indexer,
                                 _default_index,
                                 _asarray_tuplesafe,
                                 _values_from_object,
-                                _try_sort,
                                 _maybe_match_name,
                                 SettingWithCopyError,
                                 _maybe_box_datetimelike,
-                                _dict_compat,
                                 standardize_mapping,
                                 _any_none)
 from pandas.core.index import (Index, MultiIndex, InvalidIndexError,
@@ -198,32 +197,9 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
                     data = data.reindex(index, copy=copy)
                 data = data._data
             elif isinstance(data, dict):
-                if index is None:
-                    if isinstance(data, OrderedDict):
-                        index = Index(data)
-                    else:
-                        index = Index(_try_sort(data))
-                try:
-                    if isinstance(index, DatetimeIndex):
-                        if len(data):
-                            # coerce back to datetime objects for lookup
-                            data = _dict_compat(data)
-                            data = lib.fast_multiget(data,
-                                                     index.asobject.values,
-                                                     default=np.nan)
-                        else:
-                            data = np.nan
-                    # GH #12169
-                    elif isinstance(index, (PeriodIndex, TimedeltaIndex)):
-                        data = ([data.get(i, np.nan) for i in index]
-                                if data else np.nan)
-                    else:
-                        data = lib.fast_multiget(data, index.values,
-                                                 default=np.nan)
-                except TypeError:
-                    data = ([data.get(i, np.nan) for i in index]
-                            if data else np.nan)
-
+                data, index = self._init_dict(data, index, dtype)
+                dtype = None
+                copy = False
             elif isinstance(data, SingleBlockManager):
                 if index is None:
                     index = data.index
@@ -270,6 +246,45 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
 
         self.name = name
         self._set_axis(0, index, fastpath=True)
+
+    def _init_dict(self, data, index=None, dtype=None):
+        """
+        Derive the "_data" and "index" attributes of a new Series from a
+        dictionary input.
+
+        Parameters
+        ----------
+        data : dict or dict-like
+            Data used to populate the new Series
+        index : Index or index-like, default None
+            index for the new Series: if None, use dict keys
+        dtype : dtype, default None
+            dtype for the new Series: if None, infer from data
+
+        Returns
+        -------
+        _data : BlockManager for the new Series
+        index : index for the new Series
+        """
+        # Looking for NaN in dict doesn't work ({np.nan : 1}[float('nan')]
+        # raises KeyError), so we iterate the entire dict, and align
+        if data:
+            keys, values = zip(*compat.iteritems(data))
+        else:
+            keys, values = [], []
+
+        # Input is now list-like, so rely on "standard" construction:
+        s = Series(values, index=keys, dtype=dtype)
+
+        # Now we just make sure the order is respected, if any
+        if index is not None:
+            s = s.reindex(index, copy=False)
+        elif not isinstance(data, OrderedDict):
+            try:
+                s = s.sort_index()
+            except TypeError:
+                pass
+        return s._data, s.index
 
     @classmethod
     def from_array(cls, arr, index=None, name=None, dtype=None, copy=False,
@@ -1626,7 +1641,7 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
         ignore_index : boolean, default False
             If True, do not use the index labels.
 
-            .. versionadded: 0.19.0
+            .. versionadded:: 0.19.0
 
         verify_integrity : boolean, default False
             If True, raise Exception on creating index with duplicates
@@ -2213,7 +2228,7 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
         fill_value : replace NaN with this value if the unstack produces
             missing values
 
-            .. versionadded: 0.18.0
+            .. versionadded:: 0.18.0
 
         Examples
         --------
@@ -2338,41 +2353,8 @@ class Series(base.IndexOpsMixin, generic.NDFrame):
         3    0
         dtype: int64
         """
-
-        if is_extension_type(self.dtype):
-            values = self._values
-            if na_action is not None:
-                raise NotImplementedError
-            map_f = lambda values, f: values.map(f)
-        else:
-            values = self.asobject
-
-            if na_action == 'ignore':
-                def map_f(values, f):
-                    return lib.map_infer_mask(values, f,
-                                              isna(values).view(np.uint8))
-            else:
-                map_f = lib.map_infer
-
-        if isinstance(arg, dict):
-            if hasattr(arg, '__missing__'):
-                # If a dictionary subclass defines a default value method,
-                # convert arg to a lookup function (GH #15999).
-                dict_with_default = arg
-                arg = lambda x: dict_with_default[x]
-            else:
-                # Dictionary does not have a default. Thus it's safe to
-                # convert to an indexed series for efficiency.
-                arg = self._constructor(arg, index=arg.keys())
-
-        if isinstance(arg, Series):
-            # arg is a Series
-            indexer = arg.index.get_indexer(values)
-            new_values = algorithms.take_1d(arg._values, indexer)
-        else:
-            # arg is a function
-            new_values = map_f(values, arg)
-
+        new_values = super(Series, self)._map_values(
+            arg, na_action=na_action)
         return self._constructor(new_values,
                                  index=self.index).__finalize__(self)
 
@@ -3248,21 +3230,6 @@ def _sanitize_array(data, index, dtype=None, copy=False,
     else:
         subarr = _try_cast(data, False)
 
-    def create_from_value(value, index, dtype):
-        # return a new empty value suitable for the dtype
-
-        if is_datetimetz(dtype):
-            subarr = DatetimeIndex([value] * len(index), dtype=dtype)
-        elif is_categorical_dtype(dtype):
-            subarr = Categorical([value] * len(index))
-        else:
-            if not isinstance(dtype, (np.dtype, type(np.dtype))):
-                dtype = dtype.dtype
-            subarr = np.empty(len(index), dtype=dtype)
-            subarr.fill(value)
-
-        return subarr
-
     # scalar like, GH
     if getattr(subarr, 'ndim', 0) == 0:
         if isinstance(data, list):  # pragma: no cover
@@ -3277,7 +3244,8 @@ def _sanitize_array(data, index, dtype=None, copy=False,
                 # need to possibly convert the value here
                 value = maybe_cast_to_datetime(value, dtype)
 
-            subarr = create_from_value(value, index, dtype)
+            subarr = construct_1d_arraylike_from_scalar(
+                value, len(index), dtype)
 
         else:
             return subarr.item()
@@ -3288,8 +3256,8 @@ def _sanitize_array(data, index, dtype=None, copy=False,
 
             # a 1-element ndarray
             if len(subarr) != len(index) and len(subarr) == 1:
-                subarr = create_from_value(subarr[0], index,
-                                           subarr.dtype)
+                subarr = construct_1d_arraylike_from_scalar(
+                    subarr[0], len(index), subarr.dtype)
 
     elif subarr.ndim > 1:
         if isinstance(data, np.ndarray):

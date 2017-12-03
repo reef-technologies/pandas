@@ -74,15 +74,19 @@ delim_whitespace : boolean, default False
     .. versionadded:: 0.18.1 support for the Python parser.
 
 header : int or list of ints, default 'infer'
-    Row number(s) to use as the column names, and the start of the data.
-    Default behavior is as if set to 0 if no ``names`` passed, otherwise
-    ``None``. Explicitly pass ``header=0`` to be able to replace existing
-    names. The header can be a list of integers that specify row locations for
-    a multi-index on the columns e.g. [0,1,3]. Intervening rows that are not
-    specified will be skipped (e.g. 2 in this example is skipped). Note that
-    this parameter ignores commented lines and empty lines if
-    ``skip_blank_lines=True``, so header=0 denotes the first line of data
-    rather than the first line of the file.
+    Row number(s) to use as the column names, and the start of the
+    data.  Default behavior is to infer the column names: if no names
+    are passed the behavior is identical to ``header=0`` and column
+    names are inferred from the first line of the file, if column
+    names are passed explicitly then the behavior is identical to
+    ``header=None``. Explicitly pass ``header=0`` to be able to
+    replace existing names. The header can be a list of integers that
+    specify row locations for a multi-index on the columns
+    e.g. [0,1,3]. Intervening rows that are not specified will be
+    skipped (e.g. 2 in this example is skipped). Note that this
+    parameter ignores commented lines and empty lines if
+    ``skip_blank_lines=True``, so header=0 denotes the first line of
+    data rather than the first line of the file.
 names : array-like, default None
     List of column names to use. If file contains no header row, then you
     should explicitly pass header=None. Duplicates in this list will cause
@@ -1133,8 +1137,7 @@ def _evaluate_usecols(usecols, names):
     If not a callable, returns 'usecols'.
     """
     if callable(usecols):
-        return set(i for i, name in enumerate(names)
-                   if usecols(name))
+        return {i for i, name in enumerate(names) if usecols(name)}
     return usecols
 
 
@@ -1906,7 +1909,7 @@ class CParserWrapper(ParserBase):
 
             # rename dict keys
             data = sorted(data.items())
-            data = dict((k, v) for k, (i, v) in zip(names, data))
+            data = {k: v for k, (i, v) in zip(names, data)}
 
             names, data = self._do_date_conversions(names, data)
 
@@ -1924,7 +1927,7 @@ class CParserWrapper(ParserBase):
             # columns as list
             alldata = [x[1] for x in data]
 
-            data = dict((k, v) for k, (i, v) in zip(names, data))
+            data = {k: v for k, (i, v) in zip(names, data)}
 
             names, data = self._do_date_conversions(names, data)
             index, names = self._make_index(data, alldata, names)
@@ -2300,7 +2303,7 @@ class PythonParser(ParserBase):
                     offset += 1
                 data[col] = alldata[i + offset]
         else:
-            data = dict((k, v) for k, v in zip(names, alldata))
+            data = {k: v for k, v in zip(names, alldata)}
 
         return data
 
@@ -3233,9 +3236,8 @@ def _get_empty_meta(columns, index_col, index_names, dtype=None):
         for i, n in enumerate(index_col):
             columns.pop(n - i)
 
-    col_dict = dict((col_name,
-                     Series([], dtype=dtype[col_name]))
-                    for col_name in columns)
+    col_dict = {col_name: Series([], dtype=dtype[col_name])
+                for col_name in columns}
 
     return index, columns, col_dict
 

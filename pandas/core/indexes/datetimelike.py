@@ -136,7 +136,7 @@ class DatetimeIndexOpsMixin(object):
         elif not isinstance(other, type(self)):
             try:
                 other = type(self)(other)
-            except:
+            except Exception:
                 return False
 
         if not is_dtype_equal(self.dtype, other.dtype):
@@ -263,7 +263,9 @@ class DatetimeIndexOpsMixin(object):
 
         is_int = is_integer(key)
         if is_scalar(key) and not is_int:
-            raise ValueError
+            raise IndexError("only integers, slices (`:`), ellipsis (`...`), "
+                             "numpy.newaxis (`None`) and integer or boolean "
+                             "arrays are valid indices")
 
         getitem = self._data.__getitem__
         if is_int:
@@ -352,7 +354,7 @@ class DatetimeIndexOpsMixin(object):
 
             # Try to use this result if we can
             if isinstance(result, np.ndarray):
-                self._shallow_copy(result)
+                result = Index(result)
 
             if not isinstance(result, Index):
                 raise TypeError('The map function must return an Index object')

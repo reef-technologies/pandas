@@ -1162,6 +1162,11 @@ class MultiIndex(Index):
         MultiIndex.from_product : Make a MultiIndex from cartesian product
                                   of iterables
         """
+        if not is_list_like(arrays):
+            raise TypeError("Input must be a list / sequence of array-likes.")
+        elif is_iterator(arrays):
+            arrays = list(arrays)
+
         # Check if lengths of all arrays are equal or not,
         # raise ValueError, if not
         for i in range(1, len(arrays)):
@@ -1206,6 +1211,11 @@ class MultiIndex(Index):
         MultiIndex.from_product : Make a MultiIndex from cartesian product
                                   of iterables
         """
+        if not is_list_like(tuples):
+            raise TypeError('Input must be a list / sequence of tuple-likes.')
+        elif is_iterator(tuples):
+            tuples = list(tuples)
+
         if len(tuples) == 0:
             if names is None:
                 msg = 'Cannot infer number of levels from empty list'
@@ -1260,6 +1270,11 @@ class MultiIndex(Index):
         from pandas.core.categorical import _factorize_from_iterables
         from pandas.core.reshape.util import cartesian_product
 
+        if not is_list_like(iterables):
+            raise TypeError("Input must be a list / sequence of iterables.")
+        elif is_iterator(iterables):
+            iterables = list(iterables)
+
         labels, levels = _factorize_from_iterables(iterables)
         labels = cartesian_product(labels)
         return MultiIndex(levels, labels, sortorder=sortorder, names=names)
@@ -1305,19 +1320,19 @@ class MultiIndex(Index):
 
         for lev, lab in zip(self.levels, self.labels):
 
-            if lev.is_monotonic:
-                new_levels.append(lev)
-                new_labels.append(lab)
-                continue
+            if not lev.is_monotonic:
+                try:
+                    # indexer to reorder the levels
+                    indexer = lev.argsort()
+                except TypeError:
+                    pass
+                else:
+                    lev = lev.take(indexer)
 
-            # indexer to reorder the levels
-            indexer = lev.argsort()
-            lev = lev.take(indexer)
-
-            # indexer to reorder the labels
-            indexer = _ensure_int64(indexer)
-            ri = lib.get_reverse_indexer(indexer, len(indexer))
-            lab = algos.take_1d(ri, lab)
+                    # indexer to reorder the labels
+                    indexer = _ensure_int64(indexer)
+                    ri = lib.get_reverse_indexer(indexer, len(indexer))
+                    lab = algos.take_1d(ri, lab)
 
             new_levels.append(lev)
             new_labels.append(lab)
@@ -1365,31 +1380,29 @@ class MultiIndex(Index):
         new_labels = []
 
         changed = False
-        for idx, (lev, lab) in enumerate(zip(self.levels, self.labels)):
-            na_idxs = np.where(lab == -1)[0]
-
-            if len(na_idxs):
-                lab = np.delete(lab, na_idxs)
+        for lev, lab in zip(self.levels, self.labels):
 
             uniques = algos.unique(lab)
+            na_idx = np.where(uniques == -1)[0]
 
             # nothing unused
-            if len(uniques) != len(lev):
+            if len(uniques) != len(lev) + len(na_idx):
                 changed = True
 
+                if len(na_idx):
+                    # Just ensure that -1 is in first position:
+                    uniques[[0, na_idx[0]]] = uniques[[na_idx[0], 0]]
+
                 # labels get mapped from uniques to 0:len(uniques)
-                label_mapping = np.zeros(len(lev))
-                label_mapping[uniques] = np.arange(len(uniques))
+                # -1 (if present) is mapped to last position
+                label_mapping = np.zeros(len(lev) + len(na_idx))
+                # ... and reassigned value -1:
+                label_mapping[uniques] = np.arange(len(uniques)) - len(na_idx)
 
                 lab = label_mapping[lab]
 
                 # new levels are simple
-                lev = lev.take(uniques)
-
-                if len(na_idxs):
-                    lab = np.insert(lab, na_idxs - np.arange(len(na_idxs)), -1)
-            else:
-                lab = self.labels[idx]
+                lev = lev.take(uniques[len(na_idx):])
 
             new_levels.append(lev)
             new_labels.append(lab)
