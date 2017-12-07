@@ -181,6 +181,7 @@ Documentation Changes
 Bug Fixes
 ~~~~~~~~~
 
+- Bug in ``DataFrame.to_pickle()`` fails for .zip format (:issue:`17778`)
 
 Conversion
 ^^^^^^^^^^

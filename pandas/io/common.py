@@ -357,17 +357,20 @@ def _get_handle(path_or_buf, mode, encoding=None, compression=None,
         # ZIP Compression
         elif compression == 'zip':
             import zipfile
-            zip_file = zipfile.ZipFile(path_or_buf)
-            zip_names = zip_file.namelist()
-            if len(zip_names) == 1:
-                f = zip_file.open(zip_names.pop())
-            elif len(zip_names) == 0:
-                raise ValueError('Zero files found in ZIP file {}'
-                                 .format(path_or_buf))
+            if mode == 'wb':
+                f = zipfile.ZipFile(path_or_buf, 'w')
             else:
-                raise ValueError('Multiple files found in ZIP file.'
-                                 ' Only one file per ZIP: {}'
-                                 .format(zip_names))
+                zip_file = zipfile.ZipFile(path_or_buf)
+                zip_names = zip_file.namelist()
+                if len(zip_names) == 1:
+                    f = zip_file.open(zip_names.pop())
+                elif len(zip_names) == 0:
+                    raise ValueError('Zero files found in ZIP file {}'
+                                     .format(path_or_buf))
+                else:
+                    raise ValueError('Multiple files found in ZIP file.'
+                                     ' Only one file per ZIP: {}'
+                                     .format(zip_names))
 
         # XZ Compression
         elif compression == 'xz':

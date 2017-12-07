@@ -382,7 +382,7 @@ class TestCompression(object):
             fh.write(f.read())
         f.close()
 
-    @pytest.mark.parametrize('compression', [None, 'gzip', 'bz2', 'xz'])
+    @pytest.mark.parametrize('compression', [None, 'gzip', 'zip', 'bz2', 'xz'])
     def test_write_explicit(self, compression, get_random_path):
         # issue 11666
         if compression == 'xz':
@@ -414,7 +414,8 @@ class TestCompression(object):
                 df = tm.makeDataFrame()
                 df.to_pickle(path, compression=compression)
 
-    @pytest.mark.parametrize('ext', ['', '.gz', '.bz2', '.xz', '.no_compress'])
+    @pytest.mark.parametrize('ext', ['', '.gz', '.zip', '.bz2', '.xz',
+                                     '.no_compress'])
     def test_write_infer(self, ext, get_random_path):
         if ext == '.xz':
             tm._skip_if_no_lzma()
@@ -442,7 +443,7 @@ class TestCompression(object):
 
             tm.assert_frame_equal(df, df2)
 
-    @pytest.mark.parametrize('compression', [None, 'gzip', 'bz2', 'xz', "zip"])
+    @pytest.mark.parametrize('compression', [None, 'gzip', 'bz2', 'xz', 'zip'])
     def test_read_explicit(self, compression, get_random_path):
         # issue 11666
         if compression == 'xz':
